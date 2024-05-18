@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nonebot-plugin-nai3-bot"
-version = "0.0.1"
+version = "0.0.2"
 description = "基于GPT4+NovelAI V3,Bot在将自然语言转换为NAI3提示词并绘图发送的同时,还会以自定义人格和你聊天"
 authors = ["Alpaca <alpaca@bupt.edu.cn>"]
 license = "MIT"
@@ -11,6 +11,7 @@ python = "^3.8"
 nonebot2 = "^2.0.0rc3"
 nonebot-adapter-onebot = "^2.2.1"
 openai = "^1.30.1"
+Pillow = "^9.1.0"
 
 
 [[tool.poetry.source]]
