@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "nonebot-plugin-nai3-bot"
+version = "0.0.1"
+description = "基于GPT4+NovelAI V3,Bot在将自然语言转换为NAI3提示词并绘图发送的同时,还会以自定义人格和你聊天"
+authors = ["Alpaca <alpaca@bupt.edu.cn>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+nonebot2 = "^2.0.0rc3"
+nonebot-adapter-onebot = "^2.2.1"
+openai = "^1.30.1"
+
+
+[[tool.poetry.source]]
+name = "tsinghua"
+url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"
+default = true 
+
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
