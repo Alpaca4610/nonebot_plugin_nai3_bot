@@ -5,16 +5,15 @@ import json
 import random
 from PIL import Image
 import zipfile
-import requests
+import httpx
 import nonebot
-import asyncio
-import openai
 
 from nonebot import on_command
 from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11 import MessageEvent, Bot, Message, MessageSegment
 from nonebot.plugin import PluginMetadata
 from .config import Config, ConfigError
+from openai import AsyncOpenAI
 
 __plugin_meta__ = PluginMetadata(
     name="自定义人格和AI绘图的混合聊天BOT",
@@ -36,15 +35,90 @@ if not plugin_config.nai3_token:
 if not plugin_config.oneapi_key:
     raise ConfigError("请配置大模型使用的KEY")
 if plugin_config.oneapi_url:
-    openai.base_url = plugin_config.oneapi_url
-
+    client = AsyncOpenAI(
+        api_key=plugin_config.oneapi_key, base_url=plugin_config.oneapi_url
+    )
+else:
+    client = AsyncOpenAI(api_key=plugin_config.oneapi_key)
 model_id = plugin_config.oneapi_model
-openai.api_key = plugin_config.oneapi_key
 nai3_token = plugin_config.nai3_token
 
 ## todo
 # if http_proxy != "":
 #     os.environ["http_proxy"] = http_proxy
+
+
+async def gennerate(pos, neg, width, height, bot, content_):
+    seed = random.randint(0, 2**32 - 1)
+    url = "https://image.novelai.net/ai/generate-image"
+    headers = {
+        "Authorization": f"Bearer {nai3_token}",
+        "Content-Type": "application/json",
+        "Origin": "https://novelai.net",
+        "Referer": "https://novelai.net/",
+    }
+
+    payload = {
+        "action": "generate",
+        "input": pos,
+        "model": "nai-diffusion-3",
+        "parameters": {
+            "width": width,
+            "height": height,
+            "scale": 5,
+            "sampler": "k_dpmpp_2s_ancestral",
+            "steps": 28,
+            "n_samples": 1,
+            "ucPreset": 0,
+            "add_original_image": False,
+            "cfg_rescale": 0,
+            "controlnet_strength": 1,
+            "dynamic_thresholding": False,
+            "legacy": False,
+            "negative_prompt": neg,
+            "noise_schedule": "native",
+            "qualityToggle": True,
+            "seed": seed,
+            "sm": True,
+            "sm_dyn": False,
+            "uncond_scale": 1,
+        },
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json=payload, headers=headers, timeout=45)
+    zipfile_in_memory = io.BytesIO(response.content)
+    with zipfile.ZipFile(zipfile_in_memory, "r") as zip_ref:
+        file_names = zip_ref.namelist()
+        if file_names:
+            with zip_ref.open(file_names[0]) as file:
+                image = Image.open(file)
+                buffered = io.BytesIO()
+                image.save(buffered, format="PNG")
+                info_ = json.loads(image.info["Comment"])
+                # text_ = "AI绘图 " + content_
+                msgs = []
+                temp = {
+                    "type": "node",
+                    "data": {
+                        "name": "NovelAI",
+                        "uin": bot.self_id,
+                        "content": MessageSegment.image(buffered)
+                        + MessageSegment.text(html.unescape(content_)),
+                    },
+                }
+                temp2 = {
+                    "type": "node",
+                    "data": {
+                        "name": "NovelAI",
+                        "uin": bot.self_id,
+                        "content": MessageSegment.text("seed:" + str(info_["seed"])),
+                    },
+                }
+                msgs.append(temp)
+                msgs.append(temp2)
+                return msgs
+
 
 session = {}
 nai3_prompt = """
@@ -111,10 +185,12 @@ class ChatSession_:
             }
         )
 
-    def get_response(self, content):
+    async def get_response(self, content):
         self.content.append({"role": "user", "content": content})
         try:
-            res_ = openai.chat.completions.create(model=model_id, messages=self.content)
+            res_ = await client.chat.completions.create(
+                model=model_id, messages=self.content
+            )
         except Exception as error:
             print(error)
             return
@@ -139,12 +215,11 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
     if content == "" or content is None:
         await chat_request.finish(MessageSegment.text("内容不能为空！"), at_sender=True)
     await chat_request.send(MessageSegment.text("爱丽丝正在思考中......"))
-    loop = asyncio.get_event_loop()
     if event.get_session_id() not in session:
         session[event.get_session_id()] = ChatSession_(model_id=model_id)
     try:
-        res, status, prompt = await loop.run_in_executor(
-            None, session[event.get_session_id()].get_response, content
+        res, status, prompt = await session[event.get_session_id()].get_response(
+            content
         )
     except Exception as error:
         await chat_request.finish(
@@ -160,11 +235,8 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
         await chat_request.send(
             MessageSegment.text("爱丽丝正在努力画画中......"), at_sender=True
         )
-        loop = asyncio.get_event_loop()
         try:
-            msgs = await loop.run_in_executor(
-                None,
-                gennerate,
+            msgs = await gennerate(
                 prompt,
                 neg,
                 width,
@@ -179,77 +251,6 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
         await bot.call_api(
             "send_group_forward_msg", group_id=event.group_id, messages=msgs
         )
-
-
-def gennerate(pos, neg, width, height, bot, content_):
-    seed = random.randint(0, 2**32 - 1)
-    url = "https://image.novelai.net/ai/generate-image"
-    headers = {
-        "Authorization": f"Bearer {nai3_token}",
-        "Content-Type": "application/json",
-        "Origin": "https://novelai.net",
-        "Referer": "https://novelai.net/",
-    }
-
-    payload = {
-        "action": "generate",
-        "input": pos,
-        "model": "nai-diffusion-3",
-        "parameters": {
-            "width": width,
-            "height": height,
-            "scale": 5,
-            "sampler": "k_dpmpp_2s_ancestral",
-            "steps": 28,
-            "n_samples": 1,
-            "ucPreset": 0,
-            "add_original_image": False,
-            "cfg_rescale": 0,
-            "controlnet_strength": 1,
-            "dynamic_thresholding": False,
-            "legacy": False,
-            "negative_prompt": neg,
-            "noise_schedule": "native",
-            "qualityToggle": True,
-            "seed": seed,
-            "sm": True,
-            "sm_dyn": False,
-            "uncond_scale": 1,
-        },
-    }
-
-    response = requests.post(url, json=payload, headers=headers)
-    zipfile_in_memory = io.BytesIO(response.content)
-    with zipfile.ZipFile(zipfile_in_memory, "r") as zip_ref:
-        file_names = zip_ref.namelist()
-        if file_names:
-            with zip_ref.open(file_names[0]) as file:
-                image = Image.open(file)
-                buffered = io.BytesIO()
-                image.save(buffered, format="PNG")
-                info_ = json.loads(image.info["Comment"])
-                # text_ = "AI绘图 " + content_
-                msgs = []
-                temp = {
-                    "type": "node",
-                    "data": {
-                        "name": "NovelAI",
-                        "uin": bot.self_id,
-                        "content": MessageSegment.image(buffered)
-                        + MessageSegment.text(html.unescape(content_)),
-                    },
-                }
-                temp2 = {
-                    "type": "node",
-                    "data": {
-                        "name": "NovelAI",
-                        "uin": bot.self_id,
-                        "content": MessageSegment.text("seed:" + str(info_["seed"])),
-                    },
-                }
-                msgs.append(temp)
-                msgs.append(temp2)
-                return msgs
 
 
 clear_request = on_command("记忆清除", block=True, priority=1)
