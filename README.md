@@ -10,8 +10,8 @@
 </div>
 
 # 介绍
-- 本插件基于GPT4+NovelAI V3,Bot在将自然语言转换为NAI3提示词并绘图发送的同时以自定义人格与用户聊天。
-- 用户可以正常与指定人格（需要调教prompt,目前插件内置的人格为群友指定的BA角色天童爱丽丝）聊天。在聊天过程中可以使用自然语言描述AI绘图的需求,Bot会根据用户的聊天内容修改AI绘图所用的提示词（见效果图）,并且判断是否需要调用Novel V3模型进行绘画。如果为正常聊天则不会触发绘画功能,如果Bot判断用户有AI绘画的需求,则会调用NAI3绘图,并将图片和提示词发送到群内。
+- 本插件基于GPT4+NovelAI V3/Stable Diffusion API,Bot在将自然语言转换为NAI3提示词并绘图发送的同时以自定义人格与用户聊天。
+- 用户可以正常与指定人格（需要调教prompt,目前插件内置的人格为群友指定的BA角色天童爱丽丝）聊天。在聊天过程中可以使用自然语言描述AI绘图的需求,Bot会根据用户的聊天内容修改AI绘图所用的提示词（见效果图）,并且判断是否需要调用Novel V3模型/Stable Diffusion进行绘画。如果为正常聊天则不会触发绘画功能,如果Bot判断用户有AI绘画的需求,则会调用NAI3绘图,并将图片和提示词发送到群内。
 - 每个用户和Bot有独立的聊天记录。
 
 # 效果
@@ -38,7 +38,8 @@
 
 必填内容：
 ```
-nai3_token = "xxxx"  # （必填）NovelAI的token
+nai3_token = "xxxx"  # NovelAI的token,与sd_api二选一
+sd_api = "xxxxxx"    # stable diffusion的API地址，与nai3_token二选一。示例 http://{ip}:{port}/sdapi/v1/txt2img
 oneapi_key = "sk-xxxxxxxxxx"  # （必填）OpenAI官方或者是支持OneAPI的大模型中转服务商提供的KEY
 ```
 
@@ -61,7 +62,7 @@ NAI3的token获取地址方法：
 - 插件目前没有实现绘图排队提醒，多用户同时绘图NAI3可能会返回错误。
 # 添加人格
 1. 在机器人运行目录的`data`文件夹下创建文件`nai3_character.json`
-2. 参考[人格调教模版](default_character.txt)文件，将模版中的第1部分修改成你的新人格和更改剩下部分的人格名称。
+2. 参考[人格调教模版](default_character.txt)，将模版中的第1部分修改成你的新人格和更改剩下部分的人格名称。
 3. 参考[人格列表模版](nai3_character.json)，修改`nai3_character.json`文件。json文件的格式如下：
    ```json
    {
