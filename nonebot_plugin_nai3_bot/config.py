@@ -25,14 +25,14 @@ class Config(BaseModel, extra=Extra.ignore):
     )
 
     @validator("nai3_token", pre=True)
-    def _(cls, v, values):
+    def _token(cls, v, values):
         assert v or values.get(
             "sd_api"
         ), "请配置 NovelAI的token 或 StableDiffusion的api"
         return v
 
     @validator("oneapi_key")
-    def _(cls, v):
+    def _oneapi_key(cls, v):
         assert v, "请配置大模型使用的KEY"
         return v
 
