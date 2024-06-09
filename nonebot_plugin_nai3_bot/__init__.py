@@ -1,30 +1,25 @@
 # coding=utf-8
-import html
-import io
+import base64
 import json
 import os
 from pathlib import Path
-import random
-from PIL import Image
-import zipfile
-import httpx
-import nonebot
-import json
-import base64
 
+import httpx
 from nonebot import on_command
-from nonebot.params import CommandArg, ArgPlainText
 from nonebot.adapters.onebot.v11 import (
-    MessageEvent,
     Bot,
+    GroupMessageEvent,
     Message,
     MessageSegment,
     helpers,
 )
-from nonebot.plugin import PluginMetadata
 from nonebot.matcher import Matcher
-from .config import Config, ConfigError
+from nonebot.params import ArgPlainText, CommandArg
+from nonebot.plugin import PluginMetadata
 from openai import AsyncOpenAI
+
+from .config import Config, plugin_config
+from .platfrom import gennerate
 
 __plugin_meta__ = PluginMetadata(
     name="自定义人格和AI绘图的混合聊天BOT",
@@ -40,97 +35,19 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
 )
 
-plugin_config = Config.parse_obj(nonebot.get_driver().config.dict())
-if not plugin_config.nai3_token:
-    raise ConfigError("请配置NovelAI的token")
-if not plugin_config.oneapi_key:
-    raise ConfigError("请配置大模型使用的KEY")
+
 if plugin_config.oneapi_url:
     client = AsyncOpenAI(
         api_key=plugin_config.oneapi_key, base_url=plugin_config.oneapi_url
     )
 else:
     client = AsyncOpenAI(api_key=plugin_config.oneapi_key)
-model_id = plugin_config.oneapi_model
-nai3_token = plugin_config.nai3_token
 
 data_file = Path() / "data" / "nai3_character.json"
 
 # todo
 # if http_proxy != "":
 #     os.environ["http_proxy"] = http_proxy
-
-
-async def gennerate(pos, neg, width, height, bot, content_):
-    seed = random.randint(0, 2**32 - 1)
-    url = "https://image.novelai.net/ai/generate-image"
-    headers = {
-        "Authorization": f"Bearer {nai3_token}",
-        "Content-Type": "application/json",
-        "Origin": "https://novelai.net",
-        "Referer": "https://novelai.net/",
-    }
-
-    payload = {
-        "action": "generate",
-        "input": pos,
-        "model": "nai-diffusion-3",
-        "parameters": {
-            "width": width,
-            "height": height,
-            "scale": 5,
-            "sampler": "k_dpmpp_2s_ancestral",
-            "steps": 28,
-            "n_samples": 1,
-            "ucPreset": 0,
-            "add_original_image": False,
-            "cfg_rescale": 0,
-            "controlnet_strength": 1,
-            "dynamic_thresholding": False,
-            "legacy": False,
-            "negative_prompt": neg,
-            "noise_schedule": "native",
-            "qualityToggle": True,
-            "seed": seed,
-            "sm": True,
-            "sm_dyn": False,
-            "uncond_scale": 1,
-        },
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, json=payload, headers=headers, timeout=30)
-    zipfile_in_memory = io.BytesIO(response.content)
-    with zipfile.ZipFile(zipfile_in_memory, "r") as zip_ref:
-        file_names = zip_ref.namelist()
-        if file_names:
-            with zip_ref.open(file_names[0]) as file:
-                image = Image.open(file)
-                buffered = io.BytesIO()
-                image.save(buffered, format="PNG")
-                info_ = json.loads(image.info["Comment"])
-                # text_ = "AI绘图 " + content_
-                msgs = []
-                temp = {
-                    "type": "node",
-                    "data": {
-                        "name": "NovelAI",
-                        "uin": bot.self_id,
-                        "content": MessageSegment.image(buffered)
-                        + MessageSegment.text(html.unescape(content_)),
-                    },
-                }
-                temp2 = {
-                    "type": "node",
-                    "data": {
-                        "name": "NovelAI",
-                        "uin": bot.self_id,
-                        "content": MessageSegment.text("seed:" + str(info_["seed"])),
-                    },
-                }
-                msgs.append(temp)
-                msgs.append(temp2)
-                return msgs
 
 
 session = {}
@@ -230,7 +147,7 @@ class ChatSession_:
             )
         try:
             res_ = await client.chat.completions.create(
-                model=model_id, messages=self.content, temperature=2
+                model=plugin_config.oneapi_model, messages=self.content, temperature=2
             )
         except Exception as error:
             print(error)
@@ -251,7 +168,7 @@ chat_request = on_command("**", block=True, priority=1)
 
 
 @chat_request.handle()
-async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
+async def _(bot: Bot, event: GroupMessageEvent, msg: Message = CommandArg()):
     content = msg.extract_plain_text()
     img_url = helpers.extract_image_urls(event.message)
     if content == "" or content is None:
@@ -259,7 +176,7 @@ async def _(bot: Bot, event: MessageEvent, msg: Message = CommandArg()):
     await chat_request.send(MessageSegment.text(nickname + "正在思考中......"))
     session_id = event.get_session_id()
     if session_id not in session:
-        session[session_id] = ChatSession_(model_id=model_id)
+        session[session_id] = ChatSession_(model_id=plugin_config.oneapi_model)
     try:
         res, status, prompt = await session[event.get_session_id()].get_response(
             content, img_url
@@ -300,7 +217,7 @@ clear_request = on_command("记忆清除", block=True, priority=1)
 
 
 @clear_request.handle()
-async def _(event: MessageEvent):
+async def _(event: GroupMessageEvent):
     del session[event.get_session_id()]
     await clear_request.finish(
         MessageSegment.text("成功清除历史记录！"), at_sender=True
@@ -339,4 +256,4 @@ async def got_name_(name_: str = ArgPlainText()):
             nickname = matching_dicts[0]["nickname"]
             await namelist.finish(f"成功切换为{name_}人格")
         else:
-            await namelist.finish(f"人格不存在！")
+            await namelist.finish("人格不存在！")
