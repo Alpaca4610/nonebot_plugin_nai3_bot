@@ -1,14 +1,11 @@
 import base64
 import html
-import io
-import json
 import random
 
 import httpx
 from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
-from PIL import Image
 
 from ..config import plugin_config
 

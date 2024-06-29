@@ -14,12 +14,16 @@ from nonebot.adapters.onebot.v11 import (
     helpers,
 )
 from nonebot.matcher import Matcher
+# from nonebot.adapters.onebot.v11.helpers import extract_image_urls
 from nonebot.params import ArgPlainText, CommandArg
 from nonebot.plugin import PluginMetadata
+from nonebot.log import logger
 from openai import AsyncOpenAI
 
 from .config import Config, plugin_config
 from .platfrom import gennerate
+# from .platfrom.novelai import trans_gen
+from .random_tag import rand_character_, rand_style_
 
 __plugin_meta__ = PluginMetadata(
     name="自定义人格和AI绘图的混合聊天BOT",
@@ -107,27 +111,6 @@ class ChatSession_:
         global nai3_prompt
         self.content.append({"role": "user", "content": nai3_prompt})
 
-    #         self.content.append(
-    #             {
-    #                 "role": "assistant",
-    #                 "content": """{
-    #   "chat": "好的老师,我会记住这些要求",
-    #   "prompt": "",
-    #   "status": "False"
-    # }""",
-    #             }
-    #         )
-    #         self.content.append(
-    #             {
-    #                 "role": "assistant",
-    #                 "content": """{
-    #   "chat": "嘻嘻",
-    #   "prompt": "",
-    #   "status": "False"
-    # }""",
-    #             }
-    #         )
-
     async def get_response(self, content, img_url):
         if not img_url:
             self.content.append({"role": "user", "content": content})
@@ -150,11 +133,10 @@ class ChatSession_:
                 model=plugin_config.oneapi_model, messages=self.content, temperature=2
             )
         except Exception as error:
-            print(error)
+            logger.exception(error)
             return
 
         res = res_.choices[0].message.content
-        print(res)
         res = res.strip("```json\n")
         if is_valid_json(res):
             json_object = json.loads(res)
@@ -257,3 +239,86 @@ async def got_name_(name_: str = ArgPlainText()):
             await namelist.finish(f"成功切换为{name_}人格")
         else:
             await namelist.finish("人格不存在！")
+
+
+# trans = on_command("风格迁移", block=False, priority=1)
+
+
+# @trans.handle()
+# async def _(bot: Bot, event: GroupMessageEvent, msg: Message = CommandArg()):
+#     content = msg.extract_plain_text()
+#     urls = extract_image_urls(msg)
+#     if content == "" or content is None:
+#         await trans.finish(MessageSegment.text("内容不能为空！"))
+#     if not urls:
+#         await trans.finish(MessageSegment.text("没有图片！"))
+#     await trans.send(MessageSegment.text(nickname + "正在努力画画中......"))
+
+#     parts = content.split("##")
+#     try:
+#         width = 832
+#         height = 1216
+#         msgs = await trans_gen(
+#             parts[0].strip(), parts[1].strip(), width, height, bot, content, urls
+#         )
+#         await bot.call_api(
+#             "send_group_forward_msg", group_id=event.group_id, messages=msgs
+#         )
+#     except Exception as error:
+#         await trans.finish("画图出错了呢，报错为：" + str(error))
+
+
+rand_style = on_command("随机画风", block=False, priority=1)
+
+
+@rand_style.handle()
+async def _(bot: Bot, event: GroupMessageEvent, msg: Message = CommandArg()):
+    await rand_style.send(MessageSegment.text(nickname + "正在努力画画中......"))
+    content = msg.extract_plain_text()
+    tags = rand_style_(content)
+
+    neg = "nsfw, lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract], bad anatomy, bad hands, @_@, mismatched pupils, heart-shaped pupils, glowing eyes, @_@, toy, chibi,"
+    try:
+        width = 832
+        height = 1216
+        msgs = await gennerate(
+            tags,
+            neg,
+            width,
+            height,
+            bot,
+            "正面提示词:\n" + tags + "\n负面提示词:\n" + neg,
+        )
+        await bot.call_api(
+            "send_group_forward_msg", group_id=event.group_id, messages=msgs
+        )
+    except Exception as error:
+        await rand_style.finish("画图出错了呢，报错为：" + str(error))
+
+
+rand_character = on_command("随机同人", block=False, priority=1)
+
+
+@rand_character.handle()
+async def _(bot: Bot, event: GroupMessageEvent, msg: Message = CommandArg()):
+    await rand_character.send(MessageSegment.text(nickname + "正在努力画画中......"))
+    content = msg.extract_plain_text()
+    tags = rand_character_(content)
+    neg = "nsfw, lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract], bad anatomy, bad hands, @_@, mismatched pupils, heart-shaped pupils, glowing eyes, @_@, toy, chibi,"
+
+    try:
+        width = 832
+        height = 1216
+        msgs = await gennerate(
+            tags,
+            neg,
+            width,
+            height,
+            bot,
+            "正面提示词:\n" + tags + "\n负面提示词:\n" + neg,
+        )
+        await bot.call_api(
+            "send_group_forward_msg", group_id=event.group_id, messages=msgs
+        )
+    except Exception as error:
+        await rand_character.finish("画图出错了呢，报错为：" + str(error))
