@@ -10,11 +10,13 @@
 </div>
 
 # 介绍
-- 本插件基于GPT4+NovelAI V3/Stable Diffusion API,Bot在将自然语言转换为NAI3提示词并绘图发送的同时以自定义人格与用户聊天。
+- 本插件基于Claude3.5/GPT4+NovelAI V3/Stable Diffusion API,Bot在将自然语言转换为NAI3提示词并绘图发送的同时以自定义人格与用户聊天。
 - 用户可以正常与指定人格（需要调教prompt,目前插件内置的人格为群友指定的BA角色天童爱丽丝）聊天。在聊天过程中可以使用自然语言描述AI绘图的需求,Bot会根据用户的聊天内容修改AI绘图所用的提示词（见效果图）,并且判断是否需要调用Novel V3模型/Stable Diffusion进行绘画。如果为正常聊天则不会触发绘画功能,如果Bot判断用户有AI绘画的需求,则会调用NAI3绘图,并将图片和提示词发送到群内。
 - 每个用户和Bot有独立的聊天记录。
 - 随机生成画师风格串绘图和随机同人图生成
 
+# 注意
+从1.3版本开始，人格提示词文件由json变成yaml格式，不再需要将提示词转换成base64格式，请根据[此处](#添加人格)的说明进行格式转换。
 # 效果
 ![Alt](demo1.jpeg)
 ![Alt](demo2.png)
@@ -49,7 +51,7 @@ oneapi_key = "sk-xxxxxxxxxx"  # （必填）OpenAI官方或者是支持OneAPI的
 可选内容：
 ```
 oneapi_url = "https://xxxxxxxxx"  # （可选）大模型中转服务商提供的中转地址,使用OpenAI官方服务不需要填写
-oneapi_model = "gpt-4" # （可选）使用的语言大模型,建议使用gpt4或gpt4o模型以达到更好的体验效果此项,默认使用gpt-4模型
+oneapi_model = "gpt-4" # （可选）使用的语言大模型,建议使用Claude3.5模型以达到更好的体验效果
 ```
 NAI3的token获取地址方法：
 ![Alt](image.png)
@@ -66,17 +68,17 @@ NAI3的token获取地址方法：
 - 注意语言大模型的token消耗量
 - 插件目前没有实现绘图排队提醒，多用户同时绘图NAI3可能会返回错误。
 # 添加人格
-1. 在机器人运行目录的`data`文件夹下创建文件`nai3_character.json`
-2. 参考[人格调教模版](default_character.txt)，将模版中的第1部分修改成你的新人格和更改剩下部分的人格名称。
-3. 参考[人格列表模版](nai3_character.json)，修改`nai3_character.json`文件。json文件的格式如下：
-   ```json
-   {
-        "name": "人格名称（用于切换人格时区分）",
-        "nickname": "人格昵称",
-        "prompt": "调教prompt的base64编码格式，请参照默认人格模版，将模版中的第1部分修改成你的新人格和更改剩下部分的人格名称即可，然后再将文字转换成base64编码填入此部分"
-    }
+1. 在机器人运行目录的`data`文件夹下创建文件`nai3_character.yaml`
+2. 参考[人格信息模版](default_character.txt)，将模版中的第1部分修改成你的新人格和更改剩下部分的人格名称。
+3. 参考[人格列表模版](nai3_character.yaml)，修改`nai3_character.yaml`文件。json文件的格式如下：
+   ```yaml
+   - name: 人格名称（用于切换人格时区分）
+     nickname: 人格昵称
+     prompt: |
+      人格prompt，请参照默认人格模版，将模版default_character.txt中的第1部分修改成新人格和更改第2部分的出现的人格名称，再把内容复制到此处即可
+      请注意缩进格式！
     ```
-    多人格切换请写成json列表的形式
+
 4. 发送切换人格，根据机器人的提示即可切换当前人格。若切换之前存在历史对话，清除聊天历史记录即可和新人格对话。
 
 # TODO
