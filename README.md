@@ -70,12 +70,17 @@ NAI3的token获取地址方法：
 # 添加人格
 1. 在机器人运行目录的`data`文件夹下创建文件`nai3_character.yaml`
 2. 参考[人格信息模版](default_character.txt)，将模版中的第1部分修改成你的新人格和更改剩下部分的人格名称。
-3. 参考[人格列表模版](nai3_character.yaml)，修改`nai3_character.yaml`文件。json文件的格式如下：
+3. 参考[人格列表模版](nai3_character.yaml)，修改`nai3_character.yaml`文件。yaml文件的格式如下：
    ```yaml
-   - name: 人格名称（用于切换人格时区分）
+   - name: 人格1（用于切换人格时区分）
      nickname: 人格昵称
      prompt: |
-      人格prompt，请参照默认人格模版，将模版default_character.txt中的第1部分修改成新人格和更改第2部分的出现的人格名称，再把内容复制到此处即可
+      人格prompt，请参照人格信息模版，将模版default_character.txt中的第1部分修改成新人格和更改第2部分的出现的人格名称，再把内容复制到此处即可
+      请注意缩进格式！
+   - name: 人格2（用于切换人格时区分）
+     nickname: 人格昵称
+     prompt: |
+      人格prompt，请参照人格信息模版，将模版default_character.txt中的第1部分修改成新人格和更改第2部分的出现的人格名称，再把内容复制到此处即可
       请注意缩进格式！
     ```
 
