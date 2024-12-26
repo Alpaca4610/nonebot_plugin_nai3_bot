@@ -69,12 +69,6 @@ def rand_character_(content):
             t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["clothing"]["clothing_decoration"], random.choices([0, 1], weights=[0.9, 0.1], k=1)[0]))))
             t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["clothing"]["shoes"], random.choices([0, 1], weights=[0.9, 0.1], k=1)[0]))))
             t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["clothing"]["suits_1"], random.choices([0, 1], weights=[0.9, 0.1], k=1)[0]))))
-        elif selected_tag == 'b2':
-            t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["R18"]["R18_clothing"], random.choices([0, 1], weights=[0.1, 0.9], k=1)[0]))))
-            t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["R18"]["legwear"], random.choices([0, 1], weights=[0.1, 0.9], k=1)[0]))))
-            t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["R18"]["panties"], random.choices([0, 1], weights=[0.1, 0.9], k=1)[0]))))
-            t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["R18"]["underwear"], random.choices([0, 1], weights=[0.1, 0.9], k=1)[0]))))
-            t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["R18"]["socks"], random.choices([0, 1], weights=[0.1, 0.9], k=1)[0]))))
         else:
             t.append(','.join(map(str, random.sample(data["clothing_suits_R18"]["suits"], random.choices([0, 1], weights=[0.1, 0.9], k=1)[0]))))
 

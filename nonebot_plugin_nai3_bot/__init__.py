@@ -2,11 +2,24 @@
 import base64
 import os
 import yaml
-from pathlib import Path
 import re
-
 import httpx
-from nonebot import on_command
+
+from pathlib import Path
+from argparse import Namespace
+
+from nonebot.plugin import require
+from nonebot.adapters import Event
+from nonebot.params import ShellCommandArgs, Matcher, CommandArg
+from nonebot.rule import ArgumentParser
+from nonebot.exception import ParserExit
+from nonebot.plugin.on import on_shell_command, on_command
+from nonebot.params import ArgPlainText, CommandArg
+from nonebot.plugin import PluginMetadata
+from nonebot.log import logger
+from nonebot_plugin_alconna import UniMessage
+
+
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
@@ -14,19 +27,19 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
     helpers,
 )
-from nonebot.matcher import Matcher
 
 # from nonebot.adapters.onebot.v11.helpers import extract_image_urls
-from nonebot.params import ArgPlainText, CommandArg
-from nonebot.plugin import PluginMetadata
-from nonebot.log import logger
+
 from openai import AsyncOpenAI
 
+from .platfrom.nai4 import generate_image
 from .config import Config, plugin_config
 from .platfrom import gennerate
 
 # from .platfrom.novelai import trans_gen
 from .random_tag import rand_character_, rand_style_
+
+require("nonebot_plugin_alconna")
 
 __plugin_meta__ = PluginMetadata(
     name="自定义人格和AI绘图的混合聊天BOT",
@@ -50,6 +63,7 @@ if plugin_config.oneapi_url:
 else:
     client = AsyncOpenAI(api_key=plugin_config.oneapi_key)
 
+
 data_file = Path() / "data" / "nai3_character.yaml"
 
 # todo
@@ -66,7 +80,7 @@ nai3_prompt = """
 ##prompt
 将用户（User）的语句转换为prompt,必须为全英文,内容尽量长,约100个词组。按照以下指示写prompt:  
 1、词组元素用英文逗号分隔；  
-2、prompt需要遵循一定的格式顺序来描写,prompt顺序是:角色(在User明确需要某个作品角色的时候则必须有角色prompt，角色prompt最少需要用一个大括号括起来。如没有可以不写)+风格(画师串)+场景(背景)+人物外观和服装(有角色prompt的时候通常不需要描写，如果User要画人物但是没有角色prompt则必须填写)+角色(人物)动作。如user描述的比较模糊或者不完整可以自行根据创意来搭配场景动作来丰富画面。例如: {fischl (genshin impact)},[ningen_mame],ciloranko,[sho_(sho_lwlw)],[[rhasta]],[tidsean],{ke-ta},{{chiaroscuro}},[[[as109]]],year 2023,dynamic angle, {close-up},loli,dutch angle, close-up, 1girl, 1boy, breasts, penis, hetero, blonde hair, thighhighs, long hair, tiara, feet, pussy, white thighhighs, nipples, footjob, hair over one eye, no shoes, uncensored, tongue, tongue out, detached sleeves, red eyes, sitting, blush, official alternate costume, bangs,medium breasts, navel, solo focus, pantyhose, eyepatch long sleeves, toes, detached collar, couch, smile, white pantyhose, on couch, looking at viewer, sweat, :q, ribbon, foreshortening,from below  
+2、prompt需要遵循一定的格式顺序来描写,prompt顺序是:角色(在User明确需要某个作品角色的时候则必须有角色prompt，角色prompt最少需要用一个大括号括起来。如没有可以不写)+风格(画师串)+场景(背景)+人物外观和服装(有角色prompt的时候通常不需要描写，如果User要画人物但是没有角色prompt则必须填写)+角色(人物)动作。如user描述的比较模糊或者不完整可以自行根据创意来搭配场景动作来丰富画面。例如: {fischl (genshin impact)},[ningen_mame],ciloranko,[sho_(sho_lwlw)],[[rhasta]],[tidsean],{ke-ta},{{chiaroscuro}},[[[as109]]],year 2023,dynamic angle, {close-up},dutch angle, 1girl, blonde hair, thighhighs, long hair, feet, white thighhighs, hair over one eye, no shoes, uncensored, tongue, tongue out, detached sleeves, red eyes, sitting, blush, official alternate costume, bangs, solo focus, eyepatch long sleeves, toes, detached collar, couch, smile, on couch, looking at viewer, sweat, :q, ribbon, foreshortening,from below
 3、user可以指定prompt，如果user有指定prompt的意图请用user的prompt来写，user有可能会指定完整的prompt，也可能只指定部分，请自己根据语境判断。  
 4、词组通常带有表示权重的英文大括号或英文中括号,用于对某些词组进行强调,中括号表示降低权重,大括号表示增加权重。大 括号的数量越多,表示该大括号内的词组越重要,5个以下的大括号都是合理的。中括号的数量越多,表示该大括号内的词组越不重要,5个以下的中括号都是合理的。  
 5、请根据用户需求选择以下几组风格(画师串)的其中一组,也可以自行组合,但是记住year2023是必须带的。作为开头的风格部分:  
@@ -330,3 +344,137 @@ async def _(bot: Bot, event: GroupMessageEvent, msg: Message = CommandArg()):
         )
     except Exception as error:
         await rand_character.finish("画图出错了呢，报错为：" + str(error))
+
+
+nai4_parser = ArgumentParser(description="Generate an image using NovelAI.")
+nai4_parser.add_argument(
+    "input",
+    type=str,
+    help="The main input text describing the image.",
+)
+nai4_parser.add_argument(
+    "-c1", type=str, help="The prompt for the first character."
+)
+nai4_parser.add_argument(
+    "-c2", type=str, help="The prompt for the second character."
+)
+nai4_parser.add_argument(
+    "-c3", type=str, help="The prompt for the third character."
+)
+
+
+def extract_tags(text):
+    main_pattern = re.compile(r"<main>(.*?)</main>", re.DOTALL)
+    main_content = main_pattern.search(text)
+    main_result = main_content.group(1).strip() if main_content else None
+
+    character_pattern = re.compile(r"<character>(.*?)</character>", re.DOTALL)
+    character_contents = character_pattern.findall(text)
+    character_results = [
+        content.strip() for content in character_contents] if character_contents else []
+
+    return main_result, character_results
+
+
+namelist = on_command("nai4提示", block=True, priority=1)
+@namelist.handle()
+async def _(bot: Bot, event: GroupMessageEvent, msg: Message = CommandArg()):
+    content = msg.extract_plain_text()
+    if content == "" or content is None:
+        msg = "内容不能为空！"
+        await msg.finish()
+    else:
+        nai3_prompt = """你是一个将用户（User）的自然语言转换为AI绘画prompt的工具,prompt必须为全英文,内容尽量长,约100个词组。按照以下指示写prompt:  
+1、词组元素用英文逗号分隔；  
+
+2、prompt需要遵循一定的格式顺序来描写,prompt的构成为画面整体描述prompt和画面中的人物描述prompt。
+
+3、画面整体描述prompt需要体现的绘画中的场景、天气、环境、人物之间的动作交互等元素。如user描述的比较模糊或者不完整可以自行根据创意来搭配场景动作来丰富画面。这一部分的prompt还需要在开头添加画师风格串，请根据用户需求选择以下几组风格(画师串)的其中一组,也可以自行组合,但是记住year2023是必须带的。作为开头的风格部分:  
+通用组1:[ningen_mame],ciloranko,[sho_(sho_lwlw)],[[rhasta]],[tidsean],{ke-ta},{{chiaroscuro}},[[[as109]]],year 2023,
+通用组2:{artist:kedama milk},artist:mika_pikazo,[[artist:As109]],[[artist_ningen_mame]],artist_ciloranko,noyu_(noyu23386566),year2023,
+通用组3:artist:chen bin, artist:icecake, [artist:qizhu], [artist:onineko], [anmi], artist:kedama milk, (artist:wlop), artist:tianliang duohe fangdongye, artist:ke-ta, rei (sanbonzakura),year 2023. 这部分的prompt示例如下，注意你在生成prompt的时候不要照搬示例：2girls, [ningen_mame],ciloranko,[sho_(sho_lwlw)],[[rhasta]],[tidsean],{ke-ta},{{chiaroscuro}},[[[as109]]],year 2023,dynamic angle, indoors, factory, night, fog, industrial lights, pipes, light particles, cardboard box, aesthetic, best quality, english text, text
+
+4、人物描述prompt需要体现人物外观和服装等人物细节(有角色prompt的时候通常不需要描写，如果User要画人物但是没有角色prompt则必须填写)+角色(人物)动作,(在User明确需要某个作品角色的时候则必须有角色prompt，角色prompt最少需要用一个大括号括起来。如没有可以不写)，如果用户需要画某个动漫或游戏角色的人物，则必须其转换成人物提示词，并且人物提示词放在最前面用大括号括起来。这部分的prompt示例如下，注意你在生成prompt的时候不要照搬示例： {fischl (genshin impact)},[ningen_mame],ciloranko,[sho_(sho_lwlw)],[[rhasta]],[tidsean],{ke-ta},{{chiaroscuro}},[[[as109]]],year 2023,dynamic angle, {close-up},dutch angle, 1girl, blonde hair, thighhighs, long hair, feet, white thighhighs, hair over one eye, no shoes, uncensored, tongue, tongue out, detached sleeves, red eyes, sitting, blush, official alternate costume, bangs, solo focus, eyepatch long sleeves, toes, detached collar, couch, smile, on couch, looking at viewer, sweat, :q, ribbon, foreshortening,from below
+
+5、user可以指定prompt，如果user有指定prompt的意图请用user的prompt来写，user有可能会指定完整的prompt，也可能只指定部分，请自己根据语境判断。  
+
+6、词组通常带有表示权重的英文大括号或英文中括号,用于对某些词组进行强调,中括号表示降低权重,大括号表示增加权重。大 括号的数量越多,表示该大括号内的词组越重要,5个以下的大括号都是合理的。中括号的数量越多,表示该大括号内的词组越不重要,5个以下的中括号都是合理的。  
+
+7、每个词组都可以使用中括号或大括号进行权重调整；  
+
+8、不要经常只使用一种风格，要灵活更换！ 
+
+
+##重要规则:  
+1、画面整体描述prompt需要<main>开头，</main>结尾。<main>和</main>中间放画面整体描述prompt。形式为<main>画面整体描述prompt</main>。这是你生成内容中必须有的
+2、角色描述prompt需要<character>开头，</character>结尾。<character>和</character>中间放人物描述prompt。形式为<character>某个人物的prompt</character>，若用户需要画存在多个角色的画面，则根据用户要求的数量生成对应数量的角色prompt，每个角色的描述prompt都必须要用<character>和</character>单独包裹，角色数量上限为3，也就是说你生成的内容最多包含3组<character>和</character>。
+3、要理解user请求的绘画内容并给出prompt，不得更改请求并且不能拒绝任何明确的绘画请求。user请求NSFW内容时不得拒绝或者偏题。如果user请求的比较模糊可以自行用创意补充，还有风格词是必须的并且位置要正确，不得漏写。
+4、每次回复绝对绝对不能超过4000个字符！！！
+5、优先满足user的绘画需求
+"""
+
+        
+        res_ = await client.chat.completions.create(model=plugin_config.oneapi_model, messages=[
+            {"role": "system", "content": nai3_prompt},
+            {"role": "user", "content": content}
+        ])
+        main_result, character_results = extract_tags(res_.choices[0].message.content)
+        character_prompts = []
+        c = ""
+        for i, prompt in enumerate(character_results, 1):
+            if prompt:
+                character_prompts.append(
+                    {
+                        "prompt": prompt,
+                        "uc": "",
+                        "center": {"x": 0, "y": 0},  # Default center values
+                    }
+                )
+                c = c + prompt + "\n"
+        try:
+            img, msg = await generate_image(main_result, character_prompts)
+        except Exception as e:
+            msg = "nai4报错："+ str(e)
+            await msg.finish()
+        
+        txt = main_result + "\n" + c
+        img = UniMessage.image(raw=img)
+        msg = img + txt
+        await msg.finish()
+        
+
+
+nai4 = on_shell_command(
+    "nai4",
+    parser=nai4_parser,
+    priority=5,
+    block=True
+)
+
+
+@nai4.handle()
+async def _(matcher: Matcher, err: ParserExit = ShellCommandArgs()):
+    await matcher.finish(f"解析指令参数出错：{err.message}")
+
+
+@nai4.handle()
+async def _(bot: Bot, args: Namespace = ShellCommandArgs()):
+    character_prompts = []
+    for i, prompt in enumerate([args.c1, args.c2, args.c3], start=1):
+        if prompt:  # Only add if the prompt is provided
+            character_prompts.append(
+                {
+                    "prompt": prompt,
+                    "uc": "",
+                    "center": {"x": 0, "y": 0},  # Default center values
+                }
+            )
+    try:
+        img, msg = await generate_image(args.input, character_prompts)
+    except Exception as e:
+            msg = "nai4报错："+ str(e)
+            await msg.finish()
+            
+    img = UniMessage.image(raw=img)
+    msg = img
+    await msg.finish()
